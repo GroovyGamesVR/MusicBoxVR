@@ -1420,7 +1420,7 @@ GameObject:
   - component: {fileID: 1372590458}
   - component: {fileID: 1372590457}
   m_Layer: 0
-  m_Name: GameObject
+  m_Name: Recording
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1433,14 +1433,13 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1372590456}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bfadfc207dff64348be85dfd569c8eb6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   RecordingDeviceIndex: 0
   RecordingDeviceName: 
-  Latency: 0
 --- !u!4 &1372590458
 Transform:
   m_ObjectHideFlags: 0
@@ -1473,7 +1472,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1734230762
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1512,7 +1511,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3e6069b4379b0b4428eeeac18ae90e81, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _statusText: {fileID: 0}
 --- !u!114 &1734230765
 MonoBehaviour:
   m_ObjectHideFlags: 0

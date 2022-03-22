@@ -1,6 +1,8 @@
 using FMODUnity;
 using UnityEngine;
 using System.Collections;
+using System;
+using System.Runtime.InteropServices;
 
 public class RecordMic : MonoBehaviour
 {
@@ -9,8 +11,6 @@ public class RecordMic : MonoBehaviour
     public int RecordingDeviceIndex = 0;
     [TextArea] public string RecordingDeviceName = null;
     [Header("How Long In Seconds Before Recording Plays")]
-    public float Latency = 0;
-    [Header("Choose A Key To Play/Pause/Add Reverb To Recording")]
 
     //FMOD Objects
     private FMOD.Sound sound;
@@ -29,13 +29,16 @@ public class RecordMic : MonoBehaviour
     private int NumOfChannels = 0;
     private FMOD.DRIVER_STATE driverState;
 
+    private IntPtr buffer = Marshal.AllocHGlobal(65535);
+    private uint length = 65535;
+    private uint read = 0;
+    private Byte[] soundData = new Byte[65535];
+
     void Start()
     {
         //Step 1: Check to see if any recording devices (or drivers) are plugged in and available for us to use.
-
-
         RuntimeManager.CoreSystem.getRecordNumDrivers(out numofDrivers, out numOfDriversConnected);
-
+ 
         if (numOfDriversConnected == 0)
             Debug.Log("Hey! Plug a Microhpone in ya dummy!!!");
         else
@@ -54,9 +57,7 @@ public class RecordMic : MonoBehaviour
 
 
         //Step 3: Store relevant information into FMOD.CREATESOUNDEXINFO variable.
-
-
-        exinfo.cbsize = System.Runtime.InteropServices.Marshal.SizeOf(typeof(FMOD.CREATESOUNDEXINFO));
+        exinfo.cbsize = Marshal.SizeOf(typeof(FMOD.CREATESOUNDEXINFO));
         exinfo.numchannels = NumOfChannels;
         exinfo.format = FMOD.SOUND_FORMAT.PCM16;
         exinfo.defaultfrequency = SampleRate;
@@ -64,36 +65,62 @@ public class RecordMic : MonoBehaviour
 
 
         //Step 4: Create an FMOD Sound "object". This is what will hold our voice as it is recorded.
-
-
-        RuntimeManager.CoreSystem.createSound(exinfo.userdata, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.OPENUSER,
+        var res = RuntimeManager.CoreSystem.createSound(exinfo.userdata, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.OPENUSER | FMOD.MODE.OPENONLY | FMOD.MODE.CREATESTREAM,
             ref exinfo, out sound);
+        FMOD_ERRCHECK(res);
 
 
         //Step 5: Start recording through our chosen device into our Sound object.
-
-
-        RuntimeManager.CoreSystem.recordStart(RecordingDeviceIndex, sound, true);
-
-
-        // Step 6: Start a Corutine that will tell our Sound object to play after a ceratin amount of time.
-
-
-        StartCoroutine(Wait());
+        //RuntimeManager.CoreSystem.recordStart(RecordingDeviceIndex, sound, true);
+        //channel.setPaused(false);
+        //RuntimeManager.CoreSystem.playSound(sound, channelGroup, true, out channel);
+        //sound.readData(buffer, length, out read);
+        //Debug.Log("Read " + read + " sound bytes");
+        //StartCoroutine(Wait());
     }
 
-
-    IEnumerator Wait()
-    {
-        yield return new WaitForSeconds(Latency);
-        RuntimeManager.CoreSystem.playSound(sound, channelGroup, true, out channel);
-        channel.setPaused(false);
-        Debug.Log("Ready To Play");
-    }
-
+    //IEnumerator Wait()
+    //{
+    //    yield return new WaitForSeconds(0);
+    //    RuntimeManager.CoreSystem.playSound(sound, channelGroup, true, out channel);
+    //    channel.setPaused(false);
+    //   Debug.Log("Ready To Play");
+    //}
 
     void Update()
     {
+        FMOD_ERRCHECK(sound.readData(buffer, length, out read));
+        // For PCM16
+        int sampleCount = (((int)read * 8) / 16) / NumOfChannels; 
+        Debug.Log("Read " + read + " sound bytes (" + sampleCount + " samples)");
+        if (read > 0)
+        {
+            //Debug.Log("Copying");
+            Marshal.Copy(buffer, soundData, 0, sampleCount);
+            //FIXME: Free eventually...
+            //Marshal.FreeHGlobal(buffer);
+        }
 
+        // send off here...
+        // simulate receiving..
+        if (read > 0)
+        {
+            FMOD.Sound recvSound;
+            Debug.Log("Creating Stream");
+            FMOD_ERRCHECK(RuntimeManager.CoreSystem.createStream(soundData, FMOD.MODE.OPENMEMORY | FMOD.MODE.OPENRAW, ref exinfo, out recvSound));
+            Debug.Log("Playing Sound");
+            FMOD_ERRCHECK(RuntimeManager.CoreSystem.playSound(recvSound, channelGroup, true, out channel));
+            channel.setPaused(false);
+            //Debug.Log("Releasing");
+            //FMOD_ERRCHECK(recvSound.release());
+        }
+    }
+
+    void FMOD_ERRCHECK(FMOD.RESULT res)
+    {
+        if (res != FMOD.RESULT.OK)
+        {
+            Debug.Log("FMOD_Unity ERROR: " + res + " - " + FMOD.Error.String(res));
+        }
     }
 }
