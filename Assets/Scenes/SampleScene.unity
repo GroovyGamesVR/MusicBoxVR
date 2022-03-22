@@ -1433,7 +1433,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1372590456}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bfadfc207dff64348be85dfd569c8eb6, type: 3}
   m_Name: 
@@ -1441,8 +1441,6 @@ MonoBehaviour:
   RecordingDeviceIndex: 0
   RecordingDeviceName: 
   Latency: 0
-  PlayAndPause: 32
-  ReverbOnOffSwitch: 9
 --- !u!4 &1372590458
 Transform:
   m_ObjectHideFlags: 0

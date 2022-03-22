@@ -10,7 +10,6 @@ public class BADNetworkClient : MonoBehaviour
     private static int MaxMessageSize = 1024;
     private Telepathy.Client _client = new Telepathy.Client(MaxMessageSize);
     private string _playerSessionId;
-    public Text _statusText;
 
     private void ProcessMessage(BADNetworkMessage networkMessage)
     {
@@ -38,7 +37,6 @@ public class BADNetworkClient : MonoBehaviour
         {
             Debug.LogWarning("Unknown message type received.");
         }
-        _statusText.text = ClientStartup.GameStatus;
     }
 
     private void OnDataReceived(ArraySegment<byte> message)
