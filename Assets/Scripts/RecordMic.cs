@@ -14,7 +14,7 @@ public class RecordMic : MonoBehaviour
 
     //FMOD Objects
     private FMOD.Sound sound;
-    private FMOD.CREATESOUNDEXINFO exinfo;
+    private FMOD.CREATESOUNDEXINFO exinfo, exinfo2;
     private FMOD.Channel channel;
     private FMOD.ChannelGroup channelGroup;
 
@@ -29,46 +29,40 @@ public class RecordMic : MonoBehaviour
     private int NumOfChannels = 0;
     private FMOD.DRIVER_STATE driverState;
 
-    private IntPtr buffer = Marshal.AllocHGlobal(65535);
-    private uint length = 65535;
-    private uint read = 0;
-    private Byte[] soundData = new Byte[65535];
+    private IntPtr ptr1 = Marshal.AllocHGlobal(65535);
+    private IntPtr ptr2 = Marshal.AllocHGlobal(65535);
+    private Byte[] soundData = new Byte[200000];
+    private uint lastrecordpos = 0;
+    private uint recordpos = 0;
+    private uint soundLength = 0;
+    private FMOD.Sound recvSound;
+    private int samplePos = 0;
 
     void Start()
     {
-        //Step 1: Check to see if any recording devices (or drivers) are plugged in and available for us to use.
+        // Check for input devices
         RuntimeManager.CoreSystem.getRecordNumDrivers(out numofDrivers, out numOfDriversConnected);
- 
-        if (numOfDriversConnected == 0)
-            Debug.Log("Hey! Plug a Microhpone in ya dummy!!!");
-        else
-            Debug.Log("You have " + numOfDriversConnected + " microphones available to record with.");
+        Debug.Log("Found " + numOfDriversConnected + " microphones");
 
-
-        //Step 2: Get all of the information we can about the recording device (or driver) that we're
-        //        going to use to record with.
+        // Get device info
         RuntimeManager.CoreSystem.getRecordDriverInfo(RecordingDeviceIndex, out RecordingDeviceName, 50,
             out MicGUID, out SampleRate, out FMODSpeakerMode, out NumOfChannels, out driverState);
 
-
-        //Next we want to create an "FMOD Sound Object", but to do that, we first need to use our 
-        //FMOD.CREATESOUNDEXINFO variable to hold and pass information such as the sample rate we're
-        //recording at and the num of channels we're recording with into our Sound object.
-
-
-        //Step 3: Store relevant information into FMOD.CREATESOUNDEXINFO variable.
+        // Store relevant information into FMOD.CREATESOUNDEXINFO variable.
         exinfo.cbsize = Marshal.SizeOf(typeof(FMOD.CREATESOUNDEXINFO));
         exinfo.numchannels = NumOfChannels;
         exinfo.format = FMOD.SOUND_FORMAT.PCM16;
         exinfo.defaultfrequency = SampleRate;
         exinfo.length = (uint)SampleRate * sizeof(short) * (uint)NumOfChannels;
 
-
-        //Step 4: Create an FMOD Sound "object". This is what will hold our voice as it is recorded.
-        var res = RuntimeManager.CoreSystem.createSound(exinfo.userdata, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.OPENUSER | FMOD.MODE.OPENONLY | FMOD.MODE.CREATESTREAM,
+        // Create an FMOD Sound "object". This is what will hold our voice as it is recorded.
+        var res = RuntimeManager.CoreSystem.createSound(exinfo.userdata, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.OPENUSER,
             ref exinfo, out sound);
         FMOD_ERRCHECK(res);
 
+        // Start recording
+        FMOD_ERRCHECK(RuntimeManager.CoreSystem.recordStart(RecordingDeviceIndex, sound, true));
+        FMOD_ERRCHECK(sound.getLength(out soundLength, FMOD.TIMEUNIT.PCM));
 
         //Step 5: Start recording through our chosen device into our Sound object.
         //RuntimeManager.CoreSystem.recordStart(RecordingDeviceIndex, sound, true);
@@ -77,6 +71,19 @@ public class RecordMic : MonoBehaviour
         //sound.readData(buffer, length, out read);
         //Debug.Log("Read " + read + " sound bytes");
         //StartCoroutine(Wait());
+        Debug.Log("Creating Stream");
+        exinfo2.cbsize = Marshal.SizeOf(typeof(FMOD.CREATESOUNDEXINFO));
+        exinfo2.numchannels = NumOfChannels;
+        exinfo2.format = FMOD.SOUND_FORMAT.PCM16;
+        exinfo2.defaultfrequency = SampleRate;
+        exinfo2.pcmreadcallback = PCMREADCALLBACK;
+        exinfo2.length = (uint)SampleRate * sizeof(short) * (uint)NumOfChannels;
+        FMOD_ERRCHECK(RuntimeManager.CoreSystem.createSound((string)null, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.CREATESTREAM | FMOD.MODE.OPENUSER, ref exinfo2, out recvSound));
+        Debug.Log("Playing Sound");
+        FMOD_ERRCHECK(RuntimeManager.CoreSystem.playSound(recvSound, channelGroup, false, out channel));
+        channel.setMode(FMOD.MODE.LOOP_NORMAL);
+        channel.setPosition(0, FMOD.TIMEUNIT.MS);
+        channel.setPaused(false);
     }
 
     //IEnumerator Wait()
@@ -86,34 +93,73 @@ public class RecordMic : MonoBehaviour
     //    channel.setPaused(false);
     //   Debug.Log("Ready To Play");
     //}
+    
+    private uint samplesToBytes(int sampleCnt)
+    {
+        // PCM16
+        return (uint)(sampleCnt * 16 * NumOfChannels / 8);
+    }
+    private int bytesToSamples(uint bytes)
+    {
+        // PCM16
+        return (((int)bytes * 8) / 16) / NumOfChannels;
+    }
+
+    private FMOD.RESULT PCMREADCALLBACK(IntPtr soundraw, IntPtr data, uint sizebytes)
+    {
+        Debug.Log("PCMREADCALLBACK: sizebytes=" + sizebytes);
+        if (sizebytes > samplePos)
+        {
+            // Copy everything
+            Debug.Log("PCMREADCALLBACK: Copying all " + samplePos + " bytes");
+            Marshal.Copy(soundData, 0, data, samplePos);
+            samplePos = 0;
+        }
+        else
+        {
+            // Only copy what fits
+            Debug.Log("PCMREADCALLBACK: Copying " + sizebytes + " bytes");
+            Marshal.Copy(soundData, 0, data, (int)sizebytes);
+            // shift whatevers left to the start
+            Byte[] tmpData = new Byte[200000];
+            Debug.Log("PCMREADCALLBACK: Shifting " + (samplePos - sizebytes) + " bytes to soundData[0]");
+            Array.Copy(soundData, sizebytes, tmpData, 0, samplePos - sizebytes);
+            soundData = tmpData;
+            samplePos -= (int)sizebytes;
+            Debug.Log("PCMREADCALLBACK: New samplePos=" + samplePos);
+        }
+        return FMOD.RESULT.OK;
+    }
 
     void Update()
     {
-        FMOD_ERRCHECK(sound.readData(buffer, length, out read));
-        // For PCM16
-        int sampleCount = (((int)read * 8) / 16) / NumOfChannels; 
-        Debug.Log("Read " + read + " sound bytes (" + sampleCount + " samples)");
-        if (read > 0)
+        // Load mic data into buffer (TX to server)
+        FMOD_ERRCHECK(RuntimeManager.CoreSystem.getRecordPosition(RecordingDeviceIndex, out recordpos));
+        if (recordpos != lastrecordpos)
         {
-            //Debug.Log("Copying");
-            Marshal.Copy(buffer, soundData, 0, sampleCount);
-            //FIXME: Free eventually...
-            //Marshal.FreeHGlobal(buffer);
+            int blocklength;
+            uint len1, len2;
+            blocklength = (int)recordpos - (int)lastrecordpos;
+            if (blocklength < 0)
+            {
+                blocklength += (int)soundLength;
+            }
+            FMOD_ERRCHECK(sound.@lock(lastrecordpos * (uint)exinfo.numchannels * 2, (uint)blocklength * (uint)exinfo.numchannels * 2, out ptr1, out ptr2, out len1, out len2));
+            Debug.Log("Read len1=" + len1 + ", len2=" + len2);
+            if (len1 > 0)
+            {
+                Debug.Log("Copying " + len1 + " bytes to position " + samplePos);
+                Marshal.Copy(ptr1, soundData, samplePos, (int)len1);
+                samplePos += (int)len1;
+                //datalength += fwrite(ptr1, 1, len1, fptr);
+            }
+            // if (len2 > 0)
+            //{
+            //    datalength += fwrite(ptr2, 1, len2, fptr);
+            //}
+            FMOD_ERRCHECK(sound.unlock(ptr1, ptr2, len1, len2));
         }
-
-        // send off here...
-        // simulate receiving..
-        if (read > 0)
-        {
-            FMOD.Sound recvSound;
-            Debug.Log("Creating Stream");
-            FMOD_ERRCHECK(RuntimeManager.CoreSystem.createStream(soundData, FMOD.MODE.OPENMEMORY | FMOD.MODE.OPENRAW, ref exinfo, out recvSound));
-            Debug.Log("Playing Sound");
-            FMOD_ERRCHECK(RuntimeManager.CoreSystem.playSound(recvSound, channelGroup, true, out channel));
-            channel.setPaused(false);
-            //Debug.Log("Releasing");
-            //FMOD_ERRCHECK(recvSound.release());
-        }
+        lastrecordpos = recordpos;
     }
 
     void FMOD_ERRCHECK(FMOD.RESULT res)
