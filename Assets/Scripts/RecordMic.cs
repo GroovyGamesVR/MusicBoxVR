@@ -64,13 +64,7 @@ public class RecordMic : MonoBehaviour
         FMOD_ERRCHECK(RuntimeManager.CoreSystem.recordStart(RecordingDeviceIndex, sound, true));
         FMOD_ERRCHECK(sound.getLength(out soundLength, FMOD.TIMEUNIT.PCM));
 
-        //Step 5: Start recording through our chosen device into our Sound object.
-        //RuntimeManager.CoreSystem.recordStart(RecordingDeviceIndex, sound, true);
-        //channel.setPaused(false);
-        //RuntimeManager.CoreSystem.playSound(sound, channelGroup, true, out channel);
-        //sound.readData(buffer, length, out read);
-        //Debug.Log("Read " + read + " sound bytes");
-        //StartCoroutine(Wait());
+        //Setup receive stream to playback sound
         Debug.Log("Creating Stream");
         exinfo2.cbsize = Marshal.SizeOf(typeof(FMOD.CREATESOUNDEXINFO));
         exinfo2.numchannels = NumOfChannels;
@@ -86,14 +80,6 @@ public class RecordMic : MonoBehaviour
         channel.setPaused(false);
     }
 
-    //IEnumerator Wait()
-    //{
-    //    yield return new WaitForSeconds(0);
-    //    RuntimeManager.CoreSystem.playSound(sound, channelGroup, true, out channel);
-    //    channel.setPaused(false);
-    //   Debug.Log("Ready To Play");
-    //}
-    
     private uint samplesToBytes(int sampleCnt)
     {
         // PCM16
