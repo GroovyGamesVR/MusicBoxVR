@@ -47,14 +47,16 @@ public class RecordMic : MonoBehaviour
         // Get device info
         RuntimeManager.CoreSystem.getRecordDriverInfo(RecordingDeviceIndex, out RecordingDeviceName, 50,
             out MicGUID, out SampleRate, out FMODSpeakerMode, out NumOfChannels, out driverState);
+        Debug.Log("SampleRate=" + SampleRate);
+        Debug.Log("NumOfChannels=" + NumOfChannels);
 
         // Store relevant information into FMOD.CREATESOUNDEXINFO variable.
         exinfo.cbsize = Marshal.SizeOf(typeof(FMOD.CREATESOUNDEXINFO));
         exinfo.numchannels = NumOfChannels;
         exinfo.format = FMOD.SOUND_FORMAT.PCM16;
         exinfo.defaultfrequency = SampleRate;
-        exinfo.length = (uint)SampleRate * sizeof(short) * (uint)NumOfChannels;
-
+        exinfo.length = ((uint)SampleRate * sizeof(short) * (uint)NumOfChannels);
+ 
         // Create an FMOD Sound "object". This is what will hold our voice as it is recorded.
         var res = RuntimeManager.CoreSystem.createSound(exinfo.userdata, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.OPENUSER,
             ref exinfo, out sound);
@@ -71,13 +73,12 @@ public class RecordMic : MonoBehaviour
         exinfo2.format = FMOD.SOUND_FORMAT.PCM16;
         exinfo2.defaultfrequency = SampleRate;
         exinfo2.pcmreadcallback = PCMREADCALLBACK;
-        exinfo2.length = (uint)SampleRate * sizeof(short) * (uint)NumOfChannels;
+        exinfo2.length = exinfo.length;
         FMOD_ERRCHECK(RuntimeManager.CoreSystem.createSound((string)null, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.CREATESTREAM | FMOD.MODE.OPENUSER, ref exinfo2, out recvSound));
         Debug.Log("Playing Sound");
         FMOD_ERRCHECK(RuntimeManager.CoreSystem.playSound(recvSound, channelGroup, false, out channel));
         channel.setMode(FMOD.MODE.LOOP_NORMAL);
         channel.setPosition(0, FMOD.TIMEUNIT.MS);
-        channel.setPaused(false);
     }
 
     private uint samplesToBytes(int sampleCnt)
@@ -93,26 +94,26 @@ public class RecordMic : MonoBehaviour
 
     private FMOD.RESULT PCMREADCALLBACK(IntPtr soundraw, IntPtr data, uint sizebytes)
     {
-        Debug.Log("PCMREADCALLBACK: sizebytes=" + sizebytes);
+        //Debug.Log("PCMREADCALLBACK: sizebytes=" + sizebytes);
         if (sizebytes > samplePos)
         {
             // Copy everything
-            Debug.Log("PCMREADCALLBACK: Copying all " + samplePos + " bytes");
+            //Debug.Log("PCMREADCALLBACK: Copying all " + samplePos + " bytes");
             Marshal.Copy(soundData, 0, data, samplePos);
             samplePos = 0;
         }
         else
         {
             // Only copy what fits
-            Debug.Log("PCMREADCALLBACK: Copying " + sizebytes + " bytes");
+            //Debug.Log("PCMREADCALLBACK: Copying " + sizebytes + " bytes");
             Marshal.Copy(soundData, 0, data, (int)sizebytes);
             // shift whatevers left to the start
             Byte[] tmpData = new Byte[200000];
-            Debug.Log("PCMREADCALLBACK: Shifting " + (samplePos - sizebytes) + " bytes to soundData[0]");
+            //Debug.Log("PCMREADCALLBACK: Shifting " + (samplePos - sizebytes) + " bytes to soundData[0]");
             Array.Copy(soundData, sizebytes, tmpData, 0, samplePos - sizebytes);
             soundData = tmpData;
             samplePos -= (int)sizebytes;
-            Debug.Log("PCMREADCALLBACK: New samplePos=" + samplePos);
+            //Debug.Log("PCMREADCALLBACK: New samplePos=" + samplePos);
         }
         return FMOD.RESULT.OK;
     }
@@ -131,10 +132,10 @@ public class RecordMic : MonoBehaviour
                 blocklength += (int)soundLength;
             }
             FMOD_ERRCHECK(sound.@lock(lastrecordpos * (uint)exinfo.numchannels * 2, (uint)blocklength * (uint)exinfo.numchannels * 2, out ptr1, out ptr2, out len1, out len2));
-            Debug.Log("Read len1=" + len1 + ", len2=" + len2);
+            //Debug.Log("Read len1=" + len1 + ", len2=" + len2);
             if (len1 > 0)
             {
-                Debug.Log("Copying " + len1 + " bytes to position " + samplePos);
+                //Debug.Log("Copying " + len1 + " bytes to position " + samplePos);
                 Marshal.Copy(ptr1, soundData, samplePos, (int)len1);
                 samplePos += (int)len1;
                 //datalength += fwrite(ptr1, 1, len1, fptr);
@@ -146,13 +147,20 @@ public class RecordMic : MonoBehaviour
             FMOD_ERRCHECK(sound.unlock(ptr1, ptr2, len1, len2));
         }
         lastrecordpos = recordpos;
+        RuntimeManager.CoreSystem.update();
+    }
+
+    void OnDestroy()
+    {
+        sound.release();
+        recvSound.release();
     }
 
     void FMOD_ERRCHECK(FMOD.RESULT res)
     {
         if (res != FMOD.RESULT.OK)
         {
-            Debug.Log("FMOD_Unity ERROR: " + res + " - " + FMOD.Error.String(res));
+            Debug.LogError("FMOD_Unity ERROR: " + res + " - " + FMOD.Error.String(res));
         }
     }
 }
