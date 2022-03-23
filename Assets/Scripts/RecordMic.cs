@@ -93,7 +93,7 @@ public class RecordMic : MonoBehaviour
 
     private FMOD.RESULT PCMREADCALLBACK(IntPtr soundraw, IntPtr data, uint sizebytes)
     {
-        //Debug.Log("PCMREADCALLBACK: sizebytes=" + sizebytes);
+        //Debug.Log("PCMREADCALLBACK: sizebytes=" + sizebytes + ", samplePos=" + samplePos);
         if (samplePos == 0)
         {
             // nothing recorded yet
@@ -128,7 +128,12 @@ public class RecordMic : MonoBehaviour
 
     void Update()
     {
+        StoreMicInToBuffer();
+    }
+
+    private void StoreMicInToBuffer() {
         // Load mic data into buffer (TX to server)
+        RuntimeManager.CoreSystem.update();
         FMOD_ERRCHECK(RuntimeManager.CoreSystem.getRecordPosition(RecordingDeviceIndex, out recordpos));
         if (recordpos != lastrecordpos)
         {
@@ -169,7 +174,6 @@ public class RecordMic : MonoBehaviour
             FMOD_ERRCHECK(sound.unlock(ptr1, ptr2, len1, len2));
         }
         lastrecordpos = recordpos;
-        RuntimeManager.CoreSystem.update();
     }
 
     void OnDestroy()
