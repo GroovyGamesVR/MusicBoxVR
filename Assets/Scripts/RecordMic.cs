@@ -74,7 +74,7 @@ public class RecordMic : MonoBehaviour
         exinfo2.defaultfrequency = SampleRate;
         exinfo2.pcmreadcallback = PCMREADCALLBACK;
         exinfo2.length = exinfo.length;
-        FMOD_ERRCHECK(RuntimeManager.CoreSystem.createSound((string)null, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.CREATESTREAM | FMOD.MODE.OPENUSER, ref exinfo2, out recvSound));
+        FMOD_ERRCHECK(RuntimeManager.CoreSystem.createSound(exinfo2.userdata, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.OPENUSER | FMOD.MODE.CREATESTREAM, ref exinfo2, out recvSound));
         FMOD_ERRCHECK(RuntimeManager.CoreSystem.playSound(recvSound, channelGroup, false, out channel));
         channel.setMode(FMOD.MODE.LOOP_NORMAL);
         //channel.setPosition((uint)samplePos, FMOD.TIMEUNIT.PCMBYTES);
@@ -146,8 +146,16 @@ public class RecordMic : MonoBehaviour
                 if (len1 + samplePos > soundData.Length)
                 {
                     Debug.LogError("Sound buffer full, dropping samples!");
-                    // Remove old sound
-                    shiftArrayStart(ref soundData, len1);
+                    if (len1 > samplePos)
+                    {
+                        samplePos = 0;
+                    }
+                    else
+                    {
+                        // Remove oldest sound first
+                        shiftArrayStart(ref soundData, len1);
+                        samplePos -= (int)len1;
+                    }
                 }
                 //Debug.Log("Copying " + len1 + " bytes to position " + samplePos);
                 Marshal.Copy(ptr1, soundData, samplePos, (int)len1);
