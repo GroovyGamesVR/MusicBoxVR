@@ -75,10 +75,9 @@ public class RecordMic : MonoBehaviour
         exinfo2.pcmreadcallback = PCMREADCALLBACK;
         exinfo2.length = exinfo.length;
         FMOD_ERRCHECK(RuntimeManager.CoreSystem.createSound((string)null, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.CREATESTREAM | FMOD.MODE.OPENUSER, ref exinfo2, out recvSound));
-        Debug.Log("Playing Sound");
         FMOD_ERRCHECK(RuntimeManager.CoreSystem.playSound(recvSound, channelGroup, false, out channel));
         channel.setMode(FMOD.MODE.LOOP_NORMAL);
-        channel.setPosition(0, FMOD.TIMEUNIT.MS);
+        //channel.setPosition((uint)samplePos, FMOD.TIMEUNIT.PCMBYTES);
     }
 
     private uint samplesToBytes(int sampleCnt)
@@ -95,6 +94,11 @@ public class RecordMic : MonoBehaviour
     private FMOD.RESULT PCMREADCALLBACK(IntPtr soundraw, IntPtr data, uint sizebytes)
     {
         //Debug.Log("PCMREADCALLBACK: sizebytes=" + sizebytes);
+        if (samplePos == 0)
+        {
+            // nothing recorded yet
+            return FMOD.RESULT.OK;
+        }
         if (sizebytes > samplePos)
         {
             // Copy everything
@@ -108,14 +112,18 @@ public class RecordMic : MonoBehaviour
             //Debug.Log("PCMREADCALLBACK: Copying " + sizebytes + " bytes");
             Marshal.Copy(soundData, 0, data, (int)sizebytes);
             // shift whatevers left to the start
-            Byte[] tmpData = new Byte[200000];
-            //Debug.Log("PCMREADCALLBACK: Shifting " + (samplePos - sizebytes) + " bytes to soundData[0]");
-            Array.Copy(soundData, sizebytes, tmpData, 0, samplePos - sizebytes);
-            soundData = tmpData;
+            shiftArrayStart(ref soundData, sizebytes);
             samplePos -= (int)sizebytes;
             //Debug.Log("PCMREADCALLBACK: New samplePos=" + samplePos);
         }
         return FMOD.RESULT.OK;
+    }
+
+    void shiftArrayStart(ref Byte[] inArray, uint newStart)
+    {
+        Byte[] tmpData = new Byte[inArray.Length];
+        Array.Copy(inArray, newStart, tmpData, 0, (inArray.Length - newStart));
+        inArray = tmpData;
     }
 
     void Update()
@@ -135,6 +143,12 @@ public class RecordMic : MonoBehaviour
             //Debug.Log("Read len1=" + len1 + ", len2=" + len2);
             if (len1 > 0)
             {
+                if (len1 + samplePos > soundData.Length)
+                {
+                    Debug.LogError("Sound buffer full, dropping samples!");
+                    // Remove old sound
+                    shiftArrayStart(ref soundData, len1);
+                }
                 //Debug.Log("Copying " + len1 + " bytes to position " + samplePos);
                 Marshal.Copy(ptr1, soundData, samplePos, (int)len1);
                 samplePos += (int)len1;
