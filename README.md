@@ -7,7 +7,10 @@ Jamming in VR
 - Install Unity v.2020.3.31f1
 - Add Modules for all "Android Build Support"
 - Clone repository locally
+- Create new branch
 - Open project from Unity Hub and select "Add project from disk"
+- Commit and changes to new local branch
+- Push local branch to Github and open a Pull Request
 
 ### Build
 
