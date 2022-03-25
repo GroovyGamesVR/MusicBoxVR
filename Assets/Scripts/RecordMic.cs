@@ -1,6 +1,3 @@
-//#define DEBUG_TAGGING
-//#define DEBUG_RAWBYTES
-
 using FMODUnity;
 using UnityEngine;
 using System.Collections;
@@ -21,6 +18,7 @@ public class RecordMic : MonoBehaviour
     private FMOD.CREATESOUNDEXINFO exinfo, exinfo2;
     private FMOD.Channel channel;
     private FMOD.ChannelGroup channelGroup;
+    private FMOD.SOUND_FORMAT soundFormat = FMOD.SOUND_FORMAT.PCM16;
 
     //How many recording devices are plugged in for us to use.
     private int numOfDriversConnected = 0;
@@ -35,17 +33,16 @@ public class RecordMic : MonoBehaviour
 
     private IntPtr ptr1 = Marshal.AllocHGlobal(65535);
     private IntPtr ptr2 = Marshal.AllocHGlobal(65535);
+    private IntPtr recvPtr1 = Marshal.AllocHGlobal(65535);
+    private IntPtr recvPtr2 = Marshal.AllocHGlobal(65535);
     private Byte[] soundData = new Byte[200000];
-#if DEBUG_TAGGING
-    private int[] tagData = new int[200000];
-    private int nextTag = 0;
-    private int tagPos = 0;
-#endif // DEBUG_TAGGING
     private uint lastrecordpos = 0;
     private uint recordpos = 0;
     private uint soundLength = 0;
     private FMOD.Sound recvSound;
     private int samplePos = 0;
+    private uint nextPlaybackPos = 0;
+    private uint playbackPos = 0;
 
     void Start()
     {
@@ -62,7 +59,7 @@ public class RecordMic : MonoBehaviour
         // Store relevant information into FMOD.CREATESOUNDEXINFO variable.
         exinfo.cbsize = Marshal.SizeOf(typeof(FMOD.CREATESOUNDEXINFO));
         exinfo.numchannels = NumOfChannels;
-        exinfo.format = FMOD.SOUND_FORMAT.PCM16;
+        exinfo.format = soundFormat;
         exinfo.defaultfrequency = SampleRate;
         exinfo.length = ((uint)SampleRate * sizeof(short) * (uint)NumOfChannels);
  
@@ -78,103 +75,16 @@ public class RecordMic : MonoBehaviour
         //Setup receive stream to playback sound
         exinfo2.cbsize = Marshal.SizeOf(typeof(FMOD.CREATESOUNDEXINFO));
         exinfo2.numchannels = NumOfChannels;
-        exinfo2.format = FMOD.SOUND_FORMAT.PCM16;
+        exinfo2.format = soundFormat;
         exinfo2.defaultfrequency = SampleRate;
-        exinfo2.pcmreadcallback = PCMREADCALLBACK;
         exinfo2.length = exinfo.length;
-        exinfo2.decodebuffersize = 4096;
-        FMOD_ERRCHECK(RuntimeManager.CoreSystem.createSound(exinfo2.userdata, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.OPENUSER |FMOD.MODE.OPENONLY | FMOD.MODE.CREATESTREAM, ref exinfo2, out recvSound));
+        FMOD_ERRCHECK(RuntimeManager.CoreSystem.createSound(exinfo2.userdata, FMOD.MODE.LOOP_NORMAL | FMOD.MODE.OPENUSER, ref exinfo2, out recvSound));
         FMOD_ERRCHECK(RuntimeManager.CoreSystem.playSound(recvSound, channelGroup, true, out channel));
-        StartCoroutine(Wait());
-    }
-    IEnumerator Wait()
-    {
-        yield return new WaitForSeconds(1f);
-        // Shift soundData left immediately before playing
-        uint startByteCount = exinfo2.decodebuffersize * (uint)NumOfChannels * 4;
-        shiftArrayStart(ref soundData, (uint)samplePos - startByteCount);
-#if DEBUG_TAGGING
-        //Shift tag data to match
-        shiftIntArrayStart(ref tagData, bytesToSamples((uint)samplePos) - bytesToSamples(startByteCount));
-        tagPos = bytesToSamples(startByteCount);
-#endif // DEBUG_TAGGING
-        samplePos = (int)startByteCount;
-        Debug.Log("Start sound player");
-        channel.setPaused(false);
-        channel.setMode(FMOD.MODE.LOOP_NORMAL);
     }
 
-    private uint samplesToBytes(int sampleCnt)
-    {
-        // PCM16
-        return (uint)(sampleCnt * 16 * NumOfChannels / 8);
-    }
-    private int bytesToSamples(uint bytes)
-    {
-        // PCM16
-        return (((int)bytes * 8) / 16) / NumOfChannels;
-    }
-
-    private FMOD.RESULT PCMREADCALLBACK(IntPtr soundraw, IntPtr data, uint sizebytes)
-    {
-        //Debug.Log("PCMREADCALLBACK: sizebytes=" + sizebytes + ", samplePos=" + samplePos);
-        if (samplePos == 0)
-        {
-            // nothing recorded yet
-            return FMOD.RESULT.OK;
-        }
-        if (sizebytes >= samplePos)
-        {
-            // Copy everything
-            //Debug.Log("PCMREADCALLBACK: Copying all " + samplePos + " bytes");
-#if DEBUG_RAWBYTES
-            Debug.Log("PCMREADCALLBACK: Playing bytes: " + BitConverter.ToString(soundData));
-#endif // DEBUG_RAWBYTES
-#if DEBUG_TAGGING
-            Debug.Log("PCMREADCALLBACK: Playing tags " + tagData[0] + "-" + tagData[bytesToSamples((uint)samplePos) - 1]);
-            tagPos = 0;
-#endif // DEBUG_TAGGING
-            Marshal.Copy(soundData, 0, data, samplePos);
-            samplePos = 0;
-        }
-        else
-        {
-            /*
-            // Shift sound left immediately before playing, only play latest.
-            // Maybe lower latency, but choppy as some audio cut off.
-            uint startByteCount = sizebytes;
-            shiftArrayStart(ref soundData, (uint)samplePos - startByteCount);
-            //Shift tag data to match
-            shiftIntArrayStart(ref tagData, bytesToSamples((uint)samplePos) - bytesToSamples(startByteCount));
-            samplePos = (int)startByteCount;
-            tagPos = bytesToSamples(startByteCount);
-            Marshal.Copy(soundData, 0, data, (int)sizebytes);
-            */
-
-            // Only copy what fits
-            //Debug.Log("PCMREADCALLBACK: Copying " + sizebytes + " bytes");
-#if DEBUG_RAWBYTES
-            StringBuilder hex = new StringBuilder((int)sizebytes * 2);
-            for(int i=0; i < sizebytes; i++)
-                hex.AppendFormat("{0:x2}", soundData[i]);
-            Debug.Log("PCMREADCALLBACK: Playing bytes: " + hex.ToString());
-#endif // DEBUG_RAWBYTES
-            Marshal.Copy(soundData, 0, data, (int)sizebytes);
-            // shift whatevers left to the start
-#if DEBUG_TAGGING
-            int numSamples = bytesToSamples(sizebytes);
-            Debug.Log("PCMREADCALLBACK: Played tags " + tagData[0] + "-" + tagData[numSamples-1]);
-            shiftIntArrayStart(ref tagData, numSamples);
-            tagPos -= numSamples;
-#endif // DEBUG_TAGGING
-            shiftArrayStart(ref soundData, sizebytes);
-            samplePos -= (int)sizebytes;
-            //Debug.Log("PCMREADCALLBACK: New samplePos=" + samplePos);
-            
-        }
-        return FMOD.RESULT.OK;
-    }
-
+    /* FIXME
+     * Instead of shifting array to beginning, should make a proper circular buffer.
+     */
     void shiftArrayStart(ref Byte[] inArray, uint newStart)
     {
         Byte[] tmpData = new Byte[inArray.Length];
@@ -182,20 +92,72 @@ public class RecordMic : MonoBehaviour
         inArray = tmpData;
     }
 
-#if DEBUG_TAGGING
-    void shiftIntArrayStart(ref int[] inArray, int newStart)
-    {
-        int[] tmpData = new int[inArray.Length];
-        Array.Copy(inArray, newStart, tmpData, 0, (inArray.Length - newStart));
-        inArray = tmpData;
-    }
-#endif // DEBUG_TAGGING
-
     void Update()
     {
+        // Playback audio (Rx)
+        InsertDataIntoPlayback();
+        // Store audio (Tx)
         StoreMicInToBuffer();
     }
 
+    /**
+     * If there is new data in the receive buffer to play, load
+     * it into the channel to play back.
+     * If there is no new data in the receive buffer, check to
+     * see if there is still some data loaded in the channel
+     * that hasn't been played yet.
+     * If there is still some, play it.
+     * If there is nothing ready to play and nothing in the receive
+     * buffer, pause the player until new data comes (packet loss).
+     * 
+     * FIXME: This is very static-sounding...
+     */
+    private void InsertDataIntoPlayback()
+    {
+        // Load playback buffer with data (Rx server)
+        uint len1, len2;
+        channel.setPaused(true);
+        FMOD_ERRCHECK(channel.getPosition(out playbackPos, FMOD.TIMEUNIT.PCMBYTES));
+        if (samplePos <= 0)
+        {
+            // Nothing new to play
+            if (playbackPos < nextPlaybackPos)
+            {
+                // Already have data in buffer ahead to play, resume playing
+                //Debug.Log("Nothing new to play, but buffer loaded, keep playing. (playbackPos=" + playbackPos + ", nextPlayPos=" + nextPlaybackPos + ")");
+                channel.setPaused(false);
+            }
+            else
+            {
+                //Debug.Log("Nothing new to play and buffer is empty, stopping playback. (playbackPos=" + playbackPos + ", nextPlayPos=" + nextPlaybackPos + ")");
+            }
+            return;
+        }
+        //Debug.Log("playbackPos = " + playbackPos + ", samplePos=" + samplePos);
+        FMOD_ERRCHECK(recvSound.@lock(playbackPos, (uint)samplePos, out recvPtr1, out recvPtr2, out len1, out len2));
+        //Debug.Log("len1=" + len1 + ", len2=" + len2);
+        if (len1 > 0)
+        {
+            Marshal.Copy(soundData, 0, recvPtr1, (int)len1);
+            // shift whatevers left to the start
+            shiftArrayStart(ref soundData, len1);
+            samplePos -= (int)len1;
+        }
+        if (len2 > 0)
+        {
+            Marshal.Copy(soundData, 0, recvPtr2, (int)len2);
+            // shift whatevers left to the start
+            shiftArrayStart(ref soundData, len2);
+            samplePos -= (int)len2;
+        }
+        nextPlaybackPos = playbackPos + len1 + len2;
+        channel.setPaused(false);
+        FMOD_ERRCHECK(recvSound.unlock(recvPtr1, recvPtr2, len1, len2));
+    }
+
+    /**
+     * Pull data record from mic and save off into a data buffer
+     */
     private void StoreMicInToBuffer() {
         // Load mic data into buffer (TX to server)
         RuntimeManager.CoreSystem.update();
@@ -209,6 +171,11 @@ public class RecordMic : MonoBehaviour
             {
                 blocklength += (int)soundLength;
             }
+ 
+            // sound buffer is circular. If the amount requested to lock (offset+length)
+            // goes off the end of the buffer and loops back to the beginning,
+            // ptr1/len1 holds the data from offset-buffer end.
+            // ptr2/len2 holds the next data from buffer looped back at the beginning.
             FMOD_ERRCHECK(sound.@lock(lastrecordpos * (uint)exinfo.numchannels * sizeof(short), (uint)blocklength * (uint)exinfo.numchannels * sizeof(short), out ptr1, out ptr2, out len1, out len2));
             //Debug.Log("Read len1=" + len1 + ", len2=" + len2);
             if (len1 > 0)
@@ -219,48 +186,37 @@ public class RecordMic : MonoBehaviour
                     if (len1 > samplePos)
                     {
                         samplePos = 0;
-#if DEBUG_TAGGING
-                        tagPos = 0;
-#endif // DEBUG_TAGGING
                     }
                     else
                     {
                         // Remove oldest sound first
-#if DEBUG_TAGGING
-                        int shiftSamples = bytesToSamples(len1);
-                        shiftIntArrayStart(ref tagData, shiftSamples);
-                        tagPos -= shiftSamples;
-#endif // DEBUG_TAGGING
                         shiftArrayStart(ref soundData, len1);
                         samplePos -= (int)len1;
                     }
                 }
                 //Debug.Log("Copying " + len1 + " bytes to position " + samplePos);
                 Marshal.Copy(ptr1, soundData, samplePos, (int)len1);
-#if DEBUG_RAWBYTES
-                StringBuilder hex = new StringBuilder((int)len1 * 2);
-                for (int i = samplePos; i < samplePos+len1; i++)
-                    hex.AppendFormat("{0:x2}", soundData[i]);
-                Debug.Log("Recorded bytes: " + hex.ToString());
-#endif // DEBUG_RAWBYTES
                 samplePos += (int)len1;
-                //datalength += fwrite(ptr1, 1, len1, fptr);
-#if DEBUG_TAGGING
-                int samplesJustRecorded = bytesToSamples(len1);
-                for (int j=tagPos; j < tagPos+samplesJustRecorded; j++)
-                {
-                    tagData[j] = nextTag;
-                    nextTag++;
-                }
-                tagPos += samplesJustRecorded;
-                Debug.Log("Recorded tags " + (nextTag - samplesJustRecorded) + "-" + (nextTag - 1));
-#endif // DEBUG_TAGGING
             }
             if (len2 > 0)
             {
-                // FIXME: This is happening...
-                //Debug.LogError("Unhandled ptr2/len2 detected");
-                //datalength += fwrite(ptr2, 1, len2, fptr);
+                if (len2 + samplePos > soundData.Length)
+                {
+                    Debug.LogError("Sound buffer full, dropping samples!");
+                    if (len2 > samplePos)
+                    {
+                        samplePos = 0;
+                    }
+                    else
+                    {
+                        // Remove oldest sound first
+                        shiftArrayStart(ref soundData, len2);
+                        samplePos -= (int)len2;
+                    }
+                }
+                //Debug.Log("Copying " + len2 + " bytes to position " + samplePos);
+                Marshal.Copy(ptr2, soundData, samplePos, (int)len2);
+                samplePos += (int)len2;
             }
             FMOD_ERRCHECK(sound.unlock(ptr1, ptr2, len1, len2));
         }
