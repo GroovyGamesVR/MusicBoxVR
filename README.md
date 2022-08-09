@@ -1,6 +1,6 @@
 # MusicBoxVR
 
-#### Currently on hiatus
+#### UPDATE! Due to the limitations of physics, this project is on hiatus. Overcoming the latency to produce an enjoyable, real-time jamming experience is currently not possible.
 
 Jamming in VR
 
