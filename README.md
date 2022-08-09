@@ -1,5 +1,7 @@
 # MusicBoxVR
 
+#### Currently on hiatus
+
 Jamming in VR
 
 ## Contribute
